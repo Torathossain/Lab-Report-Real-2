@@ -1,0 +1,113 @@
+import pandas as pd
+import numpy as np
+from sklearn.datasets import load_iris
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, recall_score, f1_score
+
+# --- 1. Data Loading and Preprocessing ---
+
+print("--- 1. Data Loading and Preprocessing ---")
+
+# Load the Iris dataset
+iris = load_iris()
+X = pd.DataFrame(iris.data, columns=iris.feature_names)
+y = pd.Series(iris.target)
+
+# Handle missing values (Instruction: use mean or median)
+# The Iris dataset is known to be clean, but the check satisfies the instruction.
+if X.isnull().sum().sum() > 0:
+    print("Missing values found. Imputing with column mean.")
+    X = X.fillna(X.mean())
+else:
+    print("No missing values found in the Iris dataset.")
+
+# Apply Min-Max scaling to all numeric features
+scaler = MinMaxScaler()
+X_scaled = scaler.fit_transform(X)
+X_scaled = pd.DataFrame(X_scaled, columns=X.columns)
+print("Min-Max scaling applied to all features.")
+
+
+# --- 2. Modeling Setup and Hyperparameter Tuning ---
+
+print("\n--- 2. Tuning K-Nearest Neighbors (KNN) ---")
+
+# Define split ratios (test_size values corresponding to 50:50, 60:40, 70:30, 80:20 train:test)
+split_ratios_test_size = [0.5, 0.4, 0.3, 0.2]
+# Define k values (odd numbers as recommended for classification)
+k_values = range(1, 16, 2) # k = 1, 3, 5, ..., 15
+
+best_accuracy = 0
+best_params = {'k': -1, 'ratio': -1, 'test_size': -1}
+results_list = []
+
+# Loop through all split ratios and k values
+for test_size in split_ratios_test_size:
+    train_size_perc = int((1 - test_size) * 100)
+    test_size_perc = int(test_size * 100)
+    
+    # Split the dataset (stratify=y ensures equal class distribution in splits)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=test_size, random_state=42, stratify=y
+    )
+    
+    for k in k_values:
+        # Train KNN Model
+        knn = KNeighborsClassifier(n_neighbors=k)
+        knn.fit(X_train, y_train)
+        
+        # Predict and Evaluate Accuracy
+        y_pred = knn.predict(X_test)
+        accuracy = accuracy_score(y_test, y_pred)
+        
+        # Store results and check for optimal parameters
+        results_list.append({
+            'Ratio (Train:Test)': f"{train_size_perc}:{test_size_perc}",
+            'k': k,
+            'Accuracy': accuracy
+        })
+        
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_params['k'] = k
+            best_params['ratio'] = f"{train_size_perc}:{test_size_perc}"
+            best_params['test_size'] = test_size
+
+print(f"Tuning complete. Optimal k: {best_params['k']}, Best Ratio: {best_params['ratio']}, Accuracy: {best_accuracy:.4f}")
+
+# --- 3. Final Evaluation with Optimal Model ---
+
+print("\n--- 3. Final Evaluation (Optimal Model) ---")
+
+# Re-split data using the optimal ratio
+X_train_opt, X_test_opt, y_train_opt, y_test_opt = train_test_split(
+    X_scaled, y, test_size=best_params['test_size'], random_state=42, stratify=y
+)
+
+# Train the optimal KNN model
+knn_opt = KNeighborsClassifier(n_neighbors=best_params['k'])
+knn_opt.fit(X_train_opt, y_train_opt)
+y_pred_opt = knn_opt.predict(X_test_opt)
+
+# Calculate all required evaluation metrics
+conf_matrix_opt = confusion_matrix(y_test_opt, y_pred_opt)
+# Use 'weighted' average for multi-class classification
+precision_opt = precision_score(y_test_opt, y_pred_opt, average='weighted', zero_division=0)
+recall_opt = recall_score(y_test_opt, y_pred_opt, average='weighted', zero_division=0)
+f1_opt = f1_score(y_test_opt, y_pred_opt, average='weighted', zero_division=0)
+
+# Store results in a DataFrame for the report
+final_metrics_df = pd.DataFrame({
+    'Metric': ['Optimal k', 'Best Ratio (Train:Test)', 'Accuracy', 'Precision', 'Recall', 'F1-Score'],
+    'Value': [best_params['k'], best_params['ratio'], best_accuracy, precision_opt, recall_opt, f1_opt]
+})
+
+# Save results to CSV (for reporting/GitHub)
+final_metrics_df.to_csv('knn_optimal_metrics.csv', index=False)
+
+print("\nFinal Evaluation Metrics (Optimal Model):")
+print(final_metrics_df.to_markdown(index=False, numalign="left", stralign="left"))
+print("\nConfusion Matrix (Optimal Model):")
+print(conf_matrix_opt)
